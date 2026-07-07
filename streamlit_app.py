@@ -6,7 +6,8 @@
 import json # Used for handling JSON data sent/received from the backend API
 import os # Used for accessing environment variables (though less common in Streamlit apps calling APIs)
 import io # Used for handling bytes streams (e.g., for file uploads)
-
+import whois
+from datetime import datetime
 # --- Third-Party Library Imports ---
 # Ensure these are in your pyproject.toml and installed (uv sync or uv pip install .)
 import streamlit as st # The Streamlit framework for building the UI
@@ -15,8 +16,87 @@ import pandas as pd # Useful for displaying data in tables (like history)
 # Required for charting
 import altair as alt # Powerful charting library integrated with Streamlit
 import logging # Import logging for potential debug messages
+from Notebook.fraud_detection_model_ import HybridFraudDetector
+def check_suspicious_indicators(url):
+    indicators = []
 
+    suspicious_keywords = [
+        "login",
+        "verify",
+        "verification",
+        "secure",
+        "account",
+        "update",
+        "bank",
+        "password",
+        "signin",
+        "confirm"
+    ]
 
+    url_lower = url.lower()
+
+    for keyword in suspicious_keywords:
+        if keyword in url_lower:
+            indicators.append(
+                f"⚠️ Contains suspicious keyword: {keyword}"
+            )
+
+    if url_lower.startswith("http://"):
+        indicators.append(
+            "⚠️ URL does not use HTTPS"
+        )
+
+    if len(url) > 75:
+        indicators.append(
+            "⚠️ URL length is unusually high"
+        )
+
+    import re
+
+    if re.search(r"https?://\d+\.\d+\.\d+\.\d+", url):
+        indicators.append(
+            "⚠️ URL uses an IP address instead of a domain"
+        )
+
+    domain = urlparse(
+        url if url.startswith("http") else "https://" + url
+    ).netloc
+
+    if domain.count(".") > 3:
+        indicators.append(
+            "⚠️ Excessive subdomains detected"
+        )
+
+    return indicators
+def get_domain_information(domain):
+    try:
+        clean_domain = domain.replace("www.", "")
+
+        data = whois.whois(clean_domain)
+
+        created = data.creation_date
+
+        if isinstance(created, list):
+            created = created[0]
+
+        if created:
+            age_days = (datetime.now() - created).days
+            age_years = round(age_days / 365, 1)
+        else:
+            age_years = "Unknown"
+
+        return {
+            "Registrar": data.registrar or "Unknown",
+            "Created Date": str(created),
+            "Domain Age": f"{age_years} years"
+        }
+
+    except Exception:
+        return {
+            "Registrar": "Unavailable",
+            "Created Date": "Unavailable",
+            "Domain Age": "Unavailable"
+        }
 # --- Configuration and API Endpoints ---
 # Define the base URL for your running Flask backend API.
 # Ensure your Flask app (app.py) is running BEFORE starting this Streamlit app.
@@ -41,7 +121,7 @@ ANALYZE_TYPE_STATS_ENDPOINT = f"{BACKEND_API_URL}/analysis-type-stats" # Used to
 SUBMIT_FEEDBACK_ENDPOINT = f"{BACKEND_API_URL}/submit-feedback" # Endpoint to submit user feedback on analysis (POST)
 # --- END ADDED ---
 
-
+detector = HybridFraudDetector()
 # --- Streamlit Page Configuration ---
 # Configure the title, icon, and layout of the Streamlit page.
 # This must be the first Streamlit command used.
@@ -297,75 +377,22 @@ def check_api_status():
 # Attempts to log in the user by sending credentials to the backend login endpoint.
 # This function is called when the login form is submitted.
 def login_user(email, password):
-    """Attempts user login via backend API and updates session state."""
-    # Prepare the data to be sent in the POST request body as JSON.
-    json_data = {'email': email, 'password': password}
-    # Call the backend login endpoint using the helper function.
-    data, status_code = call_backend_api(LOGIN_ENDPOINT, method="POST", json_data=json_data)
-    # If the API call was successful (status 200 OK) and the response data indicates success: true, and includes username...
-    if status_code == 200 and data and data.get('success') and data.get('username'):
-        st.session_state['logged_in'] = True # Set logged_in flag to True
-        # Store user information from the backend response.
-        st.session_state['user_info'] = {'email': data.get('email'), 'username': data.get('username')}
-        st.success("Login successful!") # Display a success message to the user
-        st.rerun() # Trigger a rerun to immediately display the logged-in sections of the UI.
-
-    # Error messages for failed login attempts (e.g., 401 Invalid credentials)
-    # are handled and displayed automatically by the call_backend_api helper function.
-
+    st.session_state["logged_in"] = True
+    st.session_state["user_info"] = {"username": "Blessy"}
+    st.rerun()
 
 # Attempts to register a new user by sending data to the backend registration endpoint.
 # This function is called when the registration form is submitted.
 def register_user(email, username, password, confirm_password):
-    """Attempts user registration via backend API."""
-    # Client-side password validation before sending data to the API.
-    if password != confirm_password:
-        st.warning("Passwords do not match.") # Display a warning message
-        return # Stop execution if validation fails
-    if len(password) < 6: # Example minimum length validation
-         st.warning("Password must be at least 6 characters long.") # Display a warning
-         return
-     # Add other client-side validation (e.g., basic email format check) if needed.
-
-    # Prepare the data to be sent in the POST request body as JSON.
-    json_data = {'email': email, 'username': username, 'password': password}
-    # Call the backend registration endpoint using the helper function.
-    data, status_code = call_backend_api(REGISTER_ENDPOINT, method="POST", json_data=json_data)
-    # If the API call was successful (status 201 Created) and the response data indicates success...
-    if status_code == 201 and data and data.get('success'):
-        st.success("Registration successful! You can now log in using the form on the left.") # Display success message
-        # Optional: Clear the registration form fields after successful registration.
-        # This might involve resetting the specific session state keys used for the form inputs if they are set to persist input values.
-        # Example: del st.session_state['reg_email_input'] # Requires using keys for persistence in text_input
-    # Error messages for registration failures (e.g., 409 Conflict, 400 Bad Request)
-    # are handled and displayed by the call_backend_api helper function.
+    st.success("Registration removed. Click Login to continue.")
 
 
 # Attempts to log out the current user by calling the backend logout endpoint.
 # This function is called when the logout button is clicked.
 def logout_user():
-    """Attempts user logout via backend API and updates session state."""
-    # Call the backend logout endpoint using the helper function.
-    data, status_code = call_backend_api(LOGOUT_ENDPOINT, method="POST")
-    # Backend should return 200 OK on successful logout.
-    if status_code == 200 and data and data.get('success'):
-        st.success("Logged out successfully.") # Display success message
-        # Clear all relevant session state variables upon successful logout.
-        st.session_state['logged_in'] = False
-        st.session_state['user_info'] = None
-        st.session_state['last_analysis_result'] = None # Clear previous analysis result display
-        st.session_state['history_data'] = [] # Clear history data
-        st.session_state['history_filters'] = {} # Clear history filters
-        st.session_state['risk_level_stats'] = None # Clear stats data
-        st.session_state['type_stats'] = None # Clear stats data
-        st.session_state['awaiting_clear_confirm'] = False # Clear confirmation flag
-        st.session_state['export_csv_data'] = None # Clear export data
-        st.session_state['last_analysis_was_qr'] = False # Clear QR analysis flag
-        st.session_state['show_feedback_form'] = False # Clear feedback form state
-        st.session_state['feedback_item'] = None # Clear feedback item state
-        # Create a *new* requests.Session object to ensure no old cookies are retained for future logins.
-        st.session_state['requests_session'] = requests.Session()
-        st.rerun() # Trigger a rerun to immediately display the logged-out (login/register) UI
+    st.session_state["logged_in"] = False
+    st.session_state["user_info"] = None
+    st.rerun()
 
 
     # Error messages for logout failures are handled by call_backend_api (less common).
@@ -376,38 +403,28 @@ def logout_user():
 
 # Calls the backend API to analyze a URL and updates the analysis result in session state.
 def analyze_url_api(url):
-    """Calls the backend API to analyze a URL and updates the analysis result in session state."""
-    # Display a temporary message indicating analysis is in progress.
-    st.info(f"Analyzing URL: {url[:50]}{'...' if len(url) > 50 else ''}...") # Display truncated URL
+    """Analyze URL directly using the ML model."""
 
-    # Call the backend API's analyze-url endpoint using the helper function.
-    analysis_response_data, status_code = call_backend_api(ANALYZE_URL_ENDPOINT, method="POST", json_data={'url': url})
+    try:
+        result = detector.analyze_url(url)
 
-    # Check if the API call was successful (status 2xx).
-    if analysis_response_data: # Data is None if call_backend_api displayed an error
-        st.session_state['last_analysis_result'] = analysis_response_data # Store the analysis result dictionary in session state.
-        st.session_state['last_analysis_was_qr'] = False # Set flag: last analysis was NOT QR
-        st.session_state['show_feedback_form'] = True # Show feedback form after analysis
-        st.session_state['feedback_item'] = url # Store the analyzed item for feedback
+        st.session_state["last_analysis_result"] = result
+        st.session_state["last_analysis_was_qr"] = False
 
-        # Check for a 'save_error' flag from the backend, which indicates analysis was OK but saving history failed.
-        if analysis_response_data.get('save_error'):
-             st.warning("Analysis complete, but results could not be saved to history.")
-        else:
-             st.success("Analysis complete and saved to history.")
-             # If analysis was successful AND saving was successful, reload history and stats
-             # to include the new item in the displayed list and charts.
-             # Need to call these functions to fetch updated data after a successful save.
-             load_history_api(st.session_state['history_filters']) # Reload history with current filters
-             load_stats_api() # Reload stats
+        # Optional local history
+        if "history_data" not in st.session_state:
+            st.session_state["history_data"] = []
 
-    else: # If API call failed (status 4xx or 5xx), call_backend_api already displayed the error message.
-        st.session_state['last_analysis_result'] = None # Clear any previous result on error.
-        st.session_state['last_analysis_was_qr'] = False # Set flag: last analysis was NOT QR (error occurred)
-        st.session_state['show_feedback_form'] = False # Don't show feedback on error
-        st.session_state['feedback_item'] = None
+        st.session_state["history_data"].insert(0, {
+            "type": "URL",
+            "data": url,
+            "result": result
+        })
 
-    st.rerun() # Trigger a rerun to update the UI and display the analysis result or clear the result area on error.
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Analysis failed: {e}")# Trigger a rerun to update the UI and display the analysis result or clear the result area on error.
 
 
 # Calls the backend API to analyze a QR code image file and updates the analysis result in session state.
@@ -441,8 +458,8 @@ def analyze_qr_api(uploaded_file):
             else:
                  st.success("Analysis complete and saved to history.")
                  # If analysis was successful AND saving was successful, reload history and stats.
-                 load_history_api(st.session_state['history_filters'])
-                 load_stats_api()
+                #  load_history_api(st.session_state['history_filters'])
+                #  load_stats_api()
 
         else: # If API call failed (status 4xx or 5xx), call_backend_api displayed the error message.
             st.session_state['last_analysis_result'] = None # Clear previous result on error.
@@ -465,35 +482,9 @@ def analyze_qr_api(uploaded_file):
 # These functions call backend API for history data and actions.
 
 # Calls the backend API to fetch user's analysis history with filters and updates session state.
-def load_history_api(filters):
-    """Calls the backend API to fetch user's analysis history with filters and updates session state."""
-    # Display a loading message (optional)
-    # st.info("Loading history...") # Optional loading message
 
-    # Call the backend history endpoint using the helper function.
-    # Pass the filters dictionary as URL query parameters.
-    data, status_code = call_backend_api(HISTORY_ENDPOINT, method="GET", params=filters)
-
-    # Check if the API call was successful (status 200 OK) and the data received is a list (expected format).
-    if status_code == 200 and isinstance(data, list):
-        st.session_state['history_data'] = data # Store the fetched history data (list of dicts) in session state.
-        streamlit_logger.debug(f"Loaded {len(data)} history items.") # Log count
-        # st.success(f"Loaded {len(data)} history items.") # Avoid success message on every history load
-
-    elif status_code == 204: # Backend returned 204 No Content (indicates no history found matching filters)
-         st.session_state['history_data'] = [] # Set history data to an empty list.
-         streamlit_logger.debug("History load returned 204 No Content (no items).")
-         # st.info("No history found matching filters.") # Message handled by UI display logic below based on empty list.
-
-    else: # API call failed (error message displayed by call_backend_api).
-        st.session_state['history_data'] = [] # Clear history data on error.
-        streamlit_logger.warning("History load failed or returned non-list data.")
-
-
-    # Note: No explicit st.rerun() needed within this function if it's called *before* the history list is rendered
-    # in the main script loop (e.g., on initial logged-in display or by the Apply Filters button).
-    # The functions calling load_history_api should trigger reruns if needed after calling this.
-
+def load_history_api(filters=None):
+    return
 
 # Calls the backend API to clear user's entire history.
 # This function is called when the "Yes, Confirm Clear History" button is clicked.
@@ -596,35 +587,7 @@ def export_history_api(filters):
 # Calls backend API to fetch analysis statistics (risk levels and type counts) and updates session state.
 # This function is called when the logged-in section is first displayed or after history changes (analysis save, clear).
 def load_stats_api():
-    """Calls backend API to fetch analysis statistics (risk levels and types) and updates session state."""
-    # Display loading message (optional)
-    # st.info("Loading statistics...")
-
-    # --- Fetch Risk Level Stats ---
-    # Call the backend endpoint for risk level stats using the helper function.
-    risk_stats_data, risk_status_code = call_backend_api(ANALYZE_STATS_ENDPOINT, method="GET")
-    # Check if the API call was successful (status 200 OK) and the data received is a dictionary (expected format).
-    if risk_status_code == 200 and isinstance(risk_stats_data, dict):
-        st.session_state['risk_level_stats'] = risk_stats_data # Store the stats dictionary
-        streamlit_logger.debug(f"Fetched risk level stats: {risk_stats_data}") # Log fetched data
-        # st.success("Risk level stats loaded.")
-    else: # If API call failed (status 4xx/5xx) or data format is wrong, call_backend_api displays error.
-        st.session_state['risk_level_stats'] = None # Clear stats on error.
-
-
-    # --- Fetch Analysis Type Stats ---
-    # Call the backend endpoint for analysis type stats.
-    type_stats_data, type_status_code = call_backend_api(ANALYZE_TYPE_STATS_ENDPOINT, method="GET")
-    # Check if the API call was successful (status 200 OK) and the data is a dictionary (expected format).
-    if type_status_code == 200 and isinstance(type_stats_data, dict):
-        st.session_state['type_stats'] = type_stats_data # Store the stats dictionary
-        streamlit_logger.debug(f"Fetched type stats: {type_stats_data}") # Log fetched data
-        # st.success("Type stats loaded.")
-    else: # If API call failed or data format is wrong, call_backend_api displays error.
-        st.session_state['type_stats'] = None # Clear stats on error.
-
-    # Note: No explicit st.rerun() needed within this function if it's called *before* the stats section is displayed,
-    # as the main script loop will render it with the updated session state.
+    return
 
 
 # --- ADDED: Function to Submit User Feedback on Analysis ---
@@ -653,10 +616,11 @@ def submit_feedback_api(item_data, correct_label):
 # Check the user's authentication status with the backend API on each script rerun.
 # This function calls the /status endpoint and updates st.session_state['logged_in'] and 'user_info'.
 # This ensures the correct UI (logged-in vs. logged-out) is displayed on each rerun.
-check_api_status()
-
+# check_api_status()
+st.session_state['logged_in'] = True
+st.session_state['user_info'] = {"username": "Blessy"}
 # Set the main title for the application page.
-st.title("Fraud Detection System")
+st.title("URL & QR Threat Analyzer")
 
 # Conditional rendering: Display different content based on the user's login status.
 if st.session_state['logged_in']:
@@ -744,9 +708,38 @@ if st.session_state['logged_in']:
 
         # --- IMPROVED UI DISPLAY FOR ANALYSIS RESULTS ---
         # Use a Streamlit container to group analysis results visually.
-        with st.container(border=True): # Add a border around the results for clarity
-            st.write(f"**Analyzed Item:** {analyzed_item_data}") # Display the analyzed data (URL or QR content)
+        # Note: st.container does not accept a 'border' keyword argument.
+        with st.container():
+            from urllib.parse import urlparse
 
+            st.subheader("📄 URL Details")
+
+            parsed = urlparse(
+                analyzed_item_data if analyzed_item_data.startswith(("http://", "https://"))
+                else "https://" + analyzed_item_data
+            )
+
+            st.write(f"**Domain:** {parsed.netloc}")
+            st.write(f"**Protocol:** {parsed.scheme.upper()}")
+            if parsed.scheme.lower() == "https":
+                st.success("🔒 Secure HTTPS Connection")
+            else:
+                st.warning("⚠️ Not using HTTPS")
+            st.write(f"**Path:** {parsed.path if parsed.path else '/'}") # Display the analyzed data (URL or QR content)
+            import socket
+
+            try:
+                ip = socket.gethostbyname(parsed.netloc)
+                st.write(f"**IP Address:** {ip}")
+            except:
+                st.write("**IP Address:** Unable to resolve")
+            st.subheader("🌍 Domain Intelligence")
+
+            domain_info = get_domain_information(parsed.netloc)
+
+            st.write(f"**Registrar:** {domain_info['Registrar']}")
+            st.write(f"**Created Date:** {domain_info['Created Date']}")
+            st.write(f"**Domain Age:** {domain_info['Domain Age']}")   
             # Display the main status (Fraudulent/Not Fraudulent) using a colored message box for clarity.
             if is_fraud:
                 st.error(f"**Status:** Fraudulent") # Red box for fraudulent status
@@ -754,383 +747,115 @@ if st.session_state['logged_in']:
                 st.success(f"**Status:** Not Fraudulent") # Green box for not fraudulent status
 
             # Display Risk Level and Confidence below the main status.
-            st.write(f"**Risk Level:** {risk_level}")
-            st.write(f"**Confidence:** {confidence:.2f}%") # Format confidence as percentage
-
-            # Display risk factors if the list is not empty.
-            if risk_factors:
-                 st.write("**Risk Factors:**")
-                 # Format the list of factors as bullet points using Streamlit's Markdown support.
-                 st.markdown("- " + "\n- ".join(risk_factors))
+            if risk_level.lower() == "low":
+                st.success(f"🟢 Risk Level: {risk_level}")
+            elif risk_level.lower() == "medium":
+                st.warning(f"🟡 Risk Level: {risk_level}")
+            elif risk_level.lower() in ["high", "critical"]:
+                st.error(f"🔴 Risk Level: {risk_level}")
             else:
-                 st.write("**Risk Factors:** No specific factors identified by heuristics.") # Default message if list is empty
+                st.info(f"⚪ Risk Level: {risk_level}")
+
+            st.progress(min(confidence / 100, 1.0))
+            st.metric("Confidence", f"{confidence:.2f}%")
+            # Advanced Security Score Calculation
+
+            security_score = 100
+
+            url_lower = analyzed_item_data.lower()
+
+            # HTTPS check
+            if url_lower.startswith("http://"):
+                security_score -= 15
+
+            # IP address detection
+            import re
+            if re.search(r"https?://\d+\.\d+\.\d+\.\d+", url_lower):
+                security_score -= 25
+
+            # Suspicious indicators penalty
+            issues = check_suspicious_indicators(analyzed_item_data)
+
+            security_score -= len(issues) * 10
+
+            # ML fraud penalty
+            if is_fraud:
+                security_score -= int(confidence / 2)
+
+            # Keep score between 0-100
+            security_score = max(0, min(100, security_score))
+
+            st.subheader("🛡️ Security Score")
+            st.progress(security_score / 100)
+            st.metric("Security Score", f"{security_score:.0f}/100")
+            from datetime import datetime
+
+            st.caption(f"🕒 Analyzed on: {datetime.now().strftime('%d %b %Y, %I:%M:%S %p')}")
+            st.subheader("🚩 Suspicious URL Indicators")
+
+            issues = check_suspicious_indicators(analyzed_item_data)
+
+            if issues:
+                for issue in issues:
+                    st.warning(issue)
+
+                st.write(f"Risk factors detected: {len(issues)}")
+            else:
+                st.success("✅ No suspicious URL indicators detected")
+
+            st.subheader("📋 Analysis Summary")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.metric("Detection", "Fraudulent" if is_fraud else "Safe")
+
+            with col2:
+                st.metric("Risk", risk_level)
+
+            st.subheader("🔍 Why was this classified?")
+
+            if risk_factors:
+                for factor in risk_factors:
+                    st.markdown(f"✅ {factor}")
+            else:
+                st.success("No suspicious indicators were detected.")
 
             # --- ADDED: User Feedback Form ---
             # Show this form only if the flag is set after a successful analysis.
             if st.session_state.get('show_feedback_form', False):
-                 st.write("---") # Horizontal rule for visual separation
-                 st.write("Was this analysis correct?")
-                 # Use radio buttons to get the correct label feedback.
-                 feedback_label = st.radio(
-                     "Correct Label:",
-                     ["Select one", "Legitimate", "Fraudulent"], # Options for feedback
-                     index=0, # Default to "Select one"
-                     key="feedback_label_radio" # Unique key for the widget
-                 )
+                st.write("---") # Horizontal rule for visual separation
+                st.write("Was this analysis correct?")
+                # Use radio buttons to get the correct label feedback.
+                feedback_label = st.radio(
+                    "Correct Label:",
+                    ["Select one", "Legitimate", "Fraudulent"], # Options for feedback
+                    index=0, # Default to "Select one"
+                    key="feedback_label_radio" # Unique key for the widget
+                )
 
-                 # Button to submit feedback.
-                 # Only show the submit button if a label is selected (not "Select one").
-                 if feedback_label in ["Legitimate", "Fraudulent"]:
-                      # Add a unique key to the button
-                      if st.button("Submit Feedback", key="submit_feedback_button"):
-                           # Map "Legitimate" to label 0 and "Fraudulent" to label 1.
-                           correct_label_value = 1 if feedback_label == "Fraudulent" else 0
-                           # Call the function to submit feedback to the backend API.
-                           submit_feedback_api(st.session_state['feedback_item'], correct_label_value)
-                           # submit_feedback_api handles hiding the form and showing success/error.
+                # Button to submit feedback.
+                # Only show the submit button if a label is selected (not "Select one").
+                if feedback_label in ["Legitimate", "Fraudulent"]:
+                    # Add a unique key to the button
+                    if st.button("Submit Feedback", key="submit_feedback_button"):
+                        # Map "Legitimate" to label 0 and "Fraudulent" to label 1.
+                        correct_label_value = 1 if feedback_label == "Fraudulent" else 0
+                        # Call the function to submit feedback to the backend API.
+                        submit_feedback_api(st.session_state['feedback_item'], correct_label_value)
+                        # submit_feedback_api handles hiding the form and showing success/error.
             # --- END ADDED: User Feedback Form ---
-
 
     else:
         # Display a message prompting the user to perform an analysis when no result is available.
         st.info("Submit a URL or QR code image for analysis. Results will appear here.")
 
 
-    st.header("History and Statistics")
-    # Section for viewing analysis history and overview statistics (charts).
-
-    st.subheader("Analysis History")
-
-    # --- History Filtering UI ---
-    # Use Streamlit columns to arrange filter controls horizontally within this section.
-    # Adjust the column width ratios [2, 2, 3, 1] as needed to fit the content.
-    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([2, 2, 3, 1])
-
-    with filter_col1:
-         # Select box widget for filtering history by item type (URL or QR Code).
-         type_filter_value = st.selectbox(
-             "Type:", # Label for the select box
-             ["All", "URL", "QR Code"], # Options for filtering
-             key="history_type_filter_sb" # Use a unique key for the widget
-         )
-         # Map the selected display string to the parameter string expected by the backend API.
-         type_filter_param = "url" if type_filter_value == "URL" else ("qr" if type_filter_value == "QR Code" else "all")
-
-
-    with filter_col2:
-         # Select box widget for filtering history by risk level.
-         risk_filter_value = st.selectbox(
-             "Risk:", # Label
-             ["All", "Fraudulent", "Not Fraudulent", "Critical", "High", "Medium", "Low", "Safe", "Unknown", "Error", "Invalid Result"], # Options matching backend levels/flags + new ones
-             key="history_risk_filter_sb" # Unique key
-         )
-         # Map the selected display string to the parameter dictionary expected by the backend API.
-         # This mapping should match the logic in the backend's get_history route.
-         risk_filter_param = None # Initialize parameter dictionary to None
-         if risk_filter_value == "Fraudulent":
-              # If "Fraudulent" is selected, set the 'is_fraud' parameter to 'true' string.
-              risk_filter_param = {'is_fraud': 'true'}
-         elif risk_filter_value == "Not Fraudulent":
-              # If "Not Fraudulent" is selected, set the 'is_fraud' parameter to 'false' string.
-              risk_filter_param = {'is_fraud': 'false'}
-         elif risk_filter_value != "All":
-              # If a specific risk level is selected (not "All" or the fraud flags),
-              # set the 'risk_level' parameter.
-              # Check if the selected value is one of the valid risk level strings
-              valid_risk_levels = ["Critical", "High", "Medium", "Low", "Safe", "Unknown", "Error", "Invalid Result"] # Match values from backend/frontend display
-              if risk_filter_value in valid_risk_levels:
-                risk_filter_param = {'risk_level': risk_filter_value}
-              else:
-                  # Handle unexpected risk filter value, treat as 'All' or log warning
-                  streamlit_logger.warning(f"Received unexpected risk filter value in UI: '{risk_filter_value}'. Treating as 'All'.")
-                  risk_filter_param = None
-
-
-    with filter_col3:
-        # Text input widget for searching within history item data.
-        search_term_value = st.text_input(
-            "Search in data:", # Label for search input
-            key="history_search_term_ti" # Unique key
-        )
-        # Prepare the search parameter dictionary if a search term is entered.
-        search_filter_param = {'search': search_term_value} if search_term_value else None
-
-
-    # Combine the current filter values from the widgets into the session state dictionary.
-    # This ensures st.session_state['history_filters'] always reflects the current UI state.
-    # Note: Filter values update session state on EVERY rerun caused by ANY widget interaction.
-    # The 'Apply Filters' button click then uses the *current* state of this dictionary.
-    st.session_state['history_filters'] = {} # Reset the dictionary each rerun (based on current filter values)
-    if type_filter_param != "all":
-         st.session_state['history_filters']['type'] = type_filter_param
-    if risk_filter_param:
-        st.session_state['history_filters'].update(risk_filter_param) # Use update() to merge the risk/is_fraud parameter dictionary into the main filters dictionary.
-    if search_filter_param:
-         st.session_state['history_filters'].update(search_filter_param) # Use update() to merge the search parameter dictionary into the main filters dictionary.
-
-
-    with filter_col4:
-         # Add a button to explicitly apply the filters.
-         # Placing it in a separate column can help with layout.
-         st.write(" ") # Add vertical space to align the button with inputs if needed
-         # The button triggers the history loading process when clicked.
-         # This is a standard button outside any specific form for this section.
-         if st.button("Apply Filters"):
-              # Call the function to load history data with the current filters.
-              load_history_api(st.session_state['history_filters'])
-              # Trigger a rerun to update the displayed history list.
-              st.rerun() # Use st.rerun()
-
-
-    # --- Display History List ---
-    st.subheader("History Items")
-
-    # Load initial history data when the logged-in section is first displayed,
-    # but only if the history data is not already loaded in session state.
-    # This prevents re-fetching history on every single widget interaction that causes a rerun.
-    # The "Apply Filters" button handles subsequent re-fetching.
-    # Check if history_data is None (initial state before first load attempt) or empty AND logged in AND NO filters set.
-    # If filters ARE set on initial load, we only load when 'Apply Filters' is clicked.
-    if (st.session_state['history_data'] is None or (not st.session_state['history_data'] and not st.session_state['history_filters'])) and st.session_state['logged_in']:
-         # Load history with current (initial or previously set by filters) filters.
-         load_history_api(st.session_state['history_filters'])
-         # Note: load_history_api does NOT trigger a rerun itself. The main script continues execution.
-
-
-    # Check if history data is available in session state to display it.
-    if st.session_state['history_data']:
-        # Convert the list of history item dictionaries into a pandas DataFrame for display.
-        # This makes it easy to display a table using st.dataframe.
-        history_df_rows = [] # List to build DataFrame rows
-        for item in st.session_state['history_data']:
-            # Safely get analysis result details from the nested dictionary.
-            result = item.get('analysis_result', {}) # Default to empty dict if result is missing
-            history_df_rows.append({
-                "ID": item.get('id', 'N/A'), # Use .get() with default for safety
-                "Type": item.get('item_type', 'Unknown'),
-                "Data": item.get('item_data', 'N/A'),
-                "Risk Level": result.get('risk_level', 'Unknown'),
-                "Confidence (%)": result.get('confidence', 0),
-                "Fraudulent": result.get('is_fraud', False), # Boolean value for fraud flag
-                "Analyzed At": item.get('analyzed_at', 'N/A'),
-                "Risk Factors": ", ".join(result.get('risk_factors', [])) # Join list of factors into a string
-            })
-
-        # Create the pandas DataFrame.
-        history_df = pd.DataFrame(history_df_rows)
-
-        # Display the DataFrame as an interactive table.
-        # use_container_width=True makes the table fill the available width.
-        st.dataframe(history_df, use_container_width=True)
-
-        # TODO: Add deletion functionality for individual history items.
-        # This is complex with st.dataframe directly. It typically involves
-        # manually rendering rows or finding a Streamlit component that supports per-row buttons.
-        # If implementing, the button for a row would need to call `delete_history_item(item_id)` via API.
-        # st.write("*(Deletion functionality for individual items is a future enhancement)*")
-
-
-    elif not st.session_state['history_filters']:
-        # Display a message if history is empty *and* no filters are currently applied.
-        st.info("No analysis history yet. Your analyses will appear here.")
-    else:
-        # Display a message if history is empty *but* filters are applied.
-        st.info("No history found matching the current filters.")
-
-
-    # --- History Action Buttons (Clear and Export) ---
-    st.subheader("History Actions")
-    # Use columns to place buttons side-by-side.
-    clear_col, export_col = st.columns(2)
-
-    with clear_col:
-         # Button to clear all history for the user. Requires confirmation dialog.
-         st.write("Clear all your analysis history.")
-         # Use a standard button to trigger the confirmation flow.
-         # Only show this button if we are NOT currently awaiting confirmation.
-         if not st.session_state.get('awaiting_clear_confirm', False):
-              # Add a unique key to the button
-              if st.button("Clear All History", key="trigger_clear_confirm_button"):
-                   # Set a flag in session state to indicate that confirmation is needed.
-                   st.session_state['awaiting_clear_confirm'] = True
-                   st.rerun() # Trigger a rerun to show the confirmation UI
-
-         # Display confirmation message and buttons IF the confirmation flag is set.
-         # THESE BUTTONS MUST BE OUTSIDE ANY st.form BLOCK.
-         if st.session_state.get('awaiting_clear_confirm', False):
-             st.warning("Are you sure you want to clear ALL your history? This cannot be undone.")
-             # Use columns for the confirmation buttons to place them side-by-side.
-             confirm_yes_col, confirm_cancel_col = st.columns(2)
-             with confirm_yes_col:
-                  # The button that performs the clear action if confirmed.
-                  # This must be st.button. Add unique key.
-                  if st.button("Yes, Confirm Clear History", key="confirm_clear_yes_button"):
-                       clear_history_api() # Call the function to clear history via API
-                       # clear_history_api handles resetting the awaiting_clear_confirm flag and rerunning.
-             with confirm_cancel_col:
-                  # The button to cancel the clear operation.
-                  # This must be st.button. Add unique key.
-                  if st.button("Cancel", key="confirm_clear_cancel_button"):
-                       st.info("History clear cancelled.")
-                       st.session_state['awaiting_clear_confirm'] = False # Clear the confirmation flag
-                       st.rerun() # Use st.rerun() explicitly to dismiss the confirmation UI
-
-
-    with export_col:
-         # Button to export filtered history to CSV.
-         st.write("Export your filtered history to CSV.")
-         # Button to trigger the process of fetching export data from the backend.
-         # When this button is clicked, it calls export_history_api to fetch data and store it in session state.
-         if st.button("Generate Export CSV"):
-             export_history_api(st.session_state['history_filters']) # This function fetches data & updates session state['export_csv_data']
-             # export_history_api handles displaying status messages (fetching, no data, success, error).
-             # A rerun is NOT explicitly needed here within the button, as updating session state usually triggers one.
-
-         # Display the download button ONLY if the export data is available in session state.
-         # st.download_button renders a button that, when clicked, serves the provided 'data'.
-         # The 'data' must be available *when st.download_button is rendered*.
-         # export_history_api fetches the data and stores it as bytes in 'export_csv_data'.
-         if 'export_csv_data' in st.session_state and st.session_state['export_csv_data'] is not None:
-             st.download_button(
-                 label="Download CSV", # Label for the download button
-                 data=st.session_state['export_csv_data'], # The actual data to download (bytes)
-                 file_name="fraud_detection_history_export.csv", # Suggested filename for the downloaded file
-                 mime="text/csv", # MIME type for CSV files
-                 key="download_history_button" # Use a unique key for the widget
-                 # Optional: on_click callback to clear st.session_state['export_csv_data'] after button is displayed (doesn't track actual download click)
-             )
-             # Optional: Clear the export data from session state after download button appears
-             # This would hide the download button after a rerun, forcing the user to click "Generate" again.
-             # del st.session_state['export_csv_data'] # Uncomment if you want to clear it on the next rerun
-
-
-    st.subheader("Analysis Overview (Stats)")
-    # Section for data visualization charts based on analysis history statistics.
-
-    # Load statistics data when the logged-in section is displayed for the first time,
-    # but only if the stats data is not already loaded in session state.
-    # Also reload stats after any history change (analysis save, delete, clear).
-    # Check if both stats dicts are None (initial state before first load attempt) or empty.
-    # We trigger load if risk stats is None AND logged in. This function loads both.
+    
     if st.session_state['logged_in'] and (st.session_state['risk_level_stats'] is None): # Check only risk level stats for initial load trigger
          load_stats_api() # Call this function to fetch stats data from the backend
          # load_stats_api fetches BOTH stats types.
          # load_stats_api does not trigger a rerun itself.
 
     # Use columns to place the two charts side-by-side on wider screens.
-    chart_col1, chart_col2 = st.columns(2)
-
-    with chart_col1:
-        # Display Risk Level Distribution Chart if data is available in session state.
-        # Check if the data is a dictionary and not empty.
-        if isinstance(st.session_state['risk_level_stats'], dict) and st.session_state['risk_level_stats']:
-             st.write("Risk Level Distribution:")
-             # Convert the stats dictionary into a pandas DataFrame for charting with Altair.
-             # Use .items() to get (key, value) pairs, then create DataFrame columns.
-             # Filter out categories with 0 count for a cleaner chart if preferred,
-             # or keep them so all possible legend items are always shown. Keeping them here.
-             risk_stats_df = pd.DataFrame(list(st.session_state['risk_level_stats'].items()), columns=['Risk Level', 'Count'])
-
-             # Create an Altair chart (Bar chart).
-             # Ensure Altair is installed (`uv pip install altair`).
-             chart = alt.Chart(risk_stats_df).mark_bar().encode(
-                 # Use x for Risk Level (nominal) and y for Count (quantitative)
-                 # Use sort='-y' to sort bars by count descending
-                 x=alt.X('Risk Level', title='Risk Level', sort='-y'),
-                 y=alt.Y('Count', title='Number of Analyses'), # Y-axis: Count
-                 color=alt.Color(field="Risk Level", type="nominal", scale=alt.Scale(
-                     # Define colors corresponding to your risk levels. These should ideally match the theme/CSS.
-                     # Example domain values and range colors:
-                     # Keep 'Fraudulent' in the domain to assign it a color, even if the backend doesn't return it as a risk_level string.
-                     domain=['Critical', 'High', 'Medium', 'Low', 'Safe', 'Fraudulent', 'Unknown', 'Error', 'Invalid Result'],
-                     range=['#ef4444', '#f97316', '#f59e0b', '#4ade80', '#16a34a', '#dc2626', '#9ca3af', '#a1a1aa', '#64748b'] # Example colors (Tailwind CSS palette inspired)
-                 )),
-                 # Tooltip: Include Risk Level and Count.
-                 tooltip=[
-                     alt.Tooltip("Risk Level", title="Risk Level"), # Show Risk Level label
-                     alt.Tooltip("Count", title="Count") # Show Count
-                 ]
-             ).properties(
-                 title="Distribution of Analysis Results by Risk Level" # Chart title
-             )
-             st.altair_chart(chart, use_container_width=True) # Display the chart using Streamlit
-
-        # Display message if no stats data is available for THIS chart but user is logged in.
-        # Check if logged in AND stats data for this chart is None OR an empty dict.
-        elif st.session_state['logged_in'] and (st.session_state['risk_level_stats'] is None or not st.session_state['risk_level_stats']):
-             st.info("No analysis history yet to display Risk Level stats.")
-
-
-    with chart_col2:
-        # Display Analysis Type Distribution Chart if data is available.
-        # Check if the data is a dictionary and not empty.
-        if isinstance(st.session_state['type_stats'], dict) and st.session_state['type_stats']:
-             st.write("Analysis Type Distribution:")
-             # Convert the stats dictionary into a pandas DataFrame for charting.
-             type_stats_df = pd.DataFrame(list(st.session_state['type_stats'].items()), columns=['Type', 'Count'])
-             # Create a Bar chart for type counts using Altair.
-             # Use Altair for better control over colors and formatting than st.bar_chart.
-             type_chart = alt.Chart(type_stats_df).mark_bar().encode(
-                 x=alt.X('Type', title='Analysis Type'), # X-axis for Type
-                 y=alt.Y('Count', title='Number of Analyses'), # Y-axis for Count
-                 color=alt.Color('Type', scale=alt.Scale(
-                      domain=['url', 'qr'], # Backend uses 'url', 'qr' as keys for types
-                      range=['#2563eb', '#d97706'] # Example colors (Primary color for URL, Warning color for QR)
-                  )),
-                 tooltip=['Type', 'Count'] # Tooltip shows Type and Count
-             ).properties(
-                  title="Analysis Count by Type (URL vs QR Code)" # Chart title
-              )
-             st.altair_chart(type_chart, use_container_width=True) # Display the chart using Streamlit
-
-         # Display message if no stats data is available for THIS chart but user is logged in.
-         # Check if logged in AND stats data for this chart is None OR an empty dict.
-        elif st.session_state['logged_in'] and (st.session_state['type_stats'] is None or not st.session_state['type_stats']):
-             st.info("No analysis history yet to display Analysis Type stats.")
-
-
-else:
-    # --- Content displayed when the user is NOT logged in (Login and Register forms) ---
-
-    st.subheader("Login or Register")
-
-    # Use Streamlit columns to arrange login and register forms side-by-side.
-    col1, col2 = st.columns(2)
-
-    # Login Form Column
-    with col1:
-        st.subheader("Login")
-        # Use a form to group login inputs and the submit button.
-        # This improves performance by preventing reruns on every character typed.
-        with st.form("login_form"):
-            # Use unique keys for all Streamlit widgets of the same type.
-            email = st.text_input("Email", key="login_email_input")
-            password = st.text_input("Password", type="password", key="login_password_input")
-            login_button = st.form_submit_button("Login") # The submit button for this form
-
-            # Logic executed when the login button is clicked (within the form context).
-            if login_button:
-                if email and password:
-                    login_user(email, password) # Call the login function to interact with the backend API
-                else:
-                    st.warning("Please enter both email and password.")
-
-    # Register Form Column
-    with col2:
-        st.subheader("Register")
-        # Use a form to group registration inputs and the submit button.
-        with st.form("register_form"):
-            # Use unique keys for all widgets.
-            reg_email = st.text_input("Email", key="reg_email_input")
-            reg_username = st.text_input("Username", key="reg_username_input")
-            reg_password = st.text_input("Password", type="password", key="reg_password_input")
-            reg_confirm_password = st.text_input("Confirm Password", type="password", key="reg_confirm_password_input")
-            register_button = st.form_submit_button("Register") # The submit button for this form
-
-            # Logic executed when the register button is clicked.
-            if register_button:
-                 # Basic check if required fields are filled before calling register function.
-                 if reg_email and reg_username and reg_password and reg_confirm_password:
-                     register_user(reg_email, reg_username, reg_password, reg_confirm_password) # Call the registration function to interact with the backend API
-                 else:
-                     st.warning("Please fill in all registration fields.")
+    

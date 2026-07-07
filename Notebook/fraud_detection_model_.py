@@ -14,7 +14,16 @@ import subprocess
 import logging
 import urllib.parse # Used for parsing URLs into components
 from datetime import datetime # Added for calculating domain age
-
+TRUSTED_DOMAINS = [
+    "google.com",
+    "youtube.com",
+    "microsoft.com",
+    "github.com",
+    "apple.com",
+    "amazon.com",
+    "linkedin.com",
+    "wikipedia.org"
+]
 # --- Third-Party Library Imports ---
 # Ensure these are in your pyproject.toml and installed (uv sync or uv pip install .)
 import pandas as pd # Useful for data handling (especially for loading data from files)
@@ -104,7 +113,7 @@ class HybridFraudDetector:
         # Use the constants for clarity
         self.has_cv2 = HAS_CV2
         self.has_whois = HAS_WHOIS
-
+        self.load_model()
         if os.path.exists(MODEL_FILE) and os.path.exists(SCALER_FILE):
             logger.info(f"Found existing trained model and scaler files at '{MODEL_DIR}'.")
         else:
@@ -690,31 +699,49 @@ class HybridFraudDetector:
             confidence = probabilities[prediction_int] * 100
 
 
-            is_fraud_flag = bool(prediction_int)
+            from urllib.parse import urlparse
 
-            risk_level = 'Unknown'
-            if is_fraud_flag:
-                 if confidence >= 90:
-                     risk_level = 'Critical'
-                 elif confidence >= 75:
-                     risk_level = 'High'
-                 else:
-                      risk_level = 'Medium'
+            parsed_domain = urlparse(
+                url if url.startswith(("http://", "https://"))
+                else "https://" + url
+            ).netloc.lower()
 
-            else: # Not Fraudulent
-                 if confidence >= 95:
-                     risk_level = 'Safe'
-                 elif confidence >= 80:
-                     risk_level = 'Low'
-                 else:
-                      risk_level = 'Medium' # Can be Medium if confidence is between 50-80% for 'Not Fraudulent'
+            # Remove www.
+            parsed_domain = parsed_domain.replace("www.", "")
+
+            if parsed_domain in TRUSTED_DOMAINS:
+                is_fraud_flag = False
+                confidence = 98.0
+                risk_level = "Safe"
+                risk_factors = [
+                    "Trusted domain detected",
+                    "Domain belongs to a commonly recognized service"
+                ]
+            else:
+                is_fraud_flag = bool(prediction_int)
+                risk_level = 'Unknown'
+                if is_fraud_flag:
+                    if confidence >= 90:
+                        risk_level = 'Critical'
+                    elif confidence >= 75:
+                        risk_level = 'High'
+                    else:
+                        risk_level = 'Medium'
+                else:  # Not Fraudulent
+                    if confidence >= 95:
+                        risk_level = 'Safe'
+                    elif confidence >= 80:
+                        risk_level = 'Low'
+                    else:
+                        risk_level = 'Medium'  # Can be Medium if confidence is between 50-80% for 'Not Fraudulent'
 
 
             # --- Risk Factors Heuristic Logic ---
             # Extract features again as a dictionary for easier access by name
-            risk_factors = []
+            if parsed_domain not in TRUSTED_DOMAINS:
+              risk_factors = []
             # Ensure features were extracted correctly before accessing by name
-            if features.shape[0] > 0 and features.shape[1] == EXPECTED_FEATURE_COUNT:
+            if parsed_domain not in TRUSTED_DOMAINS and features.shape[0] > 0 and features.shape[1] == EXPECTED_FEATURE_COUNT:
                 extracted_features_dict = dict(zip(feature_names, features[0]))
 
                 if extracted_features_dict.get("length", 0) > 100:

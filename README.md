@@ -1,4 +1,4 @@
-# 🚀 Fraud Detection System (URL & QR Code Analysis)
+# URL & QR Threat Analyzer
 
 A hybrid fraud detection system that analyzes URLs and QR codes to identify potential phishing or fraudulent links. This project leverages machine learning and rule-based analysis to classify links as safe or fraudulent, providing a confidence score and risk level.
 
@@ -138,7 +138,5 @@ Upload an image containing a QR code
 ![alt text](images/image.png)
 
 ## 👨‍💻 Contributors
+Blessy
 
-- Ritesh Brahmachari  
-- Satyabrata Panigrahi  
-- Tanisha Dutta  
