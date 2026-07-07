@@ -129,9 +129,7 @@ uv run streamlit run streamlit_app.py
 
 ---
 
-# 📸 Screenshot
 
-![Application Screenshot](images/image.png)
 
 ---
 
