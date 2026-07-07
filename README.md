@@ -1,142 +1,159 @@
-# URL & QR Threat Analyzer
+# 🔐 Unified QR & URL Phishing Detection
 
-A hybrid fraud detection system that analyzes URLs and QR codes to identify potential phishing or fraudulent links. This project leverages machine learning and rule-based analysis to classify links as safe or fraudulent, providing a confidence score and risk level.
+A machine learning-powered cybersecurity application that detects phishing and malicious URLs from both direct user input and QR codes. The system combines machine learning with heuristic analysis and domain intelligence to provide accurate threat detection along with an easy-to-understand security report.
 
-## 🔥 Features
+---
 
-✅ **URL Analysis** - Detects malicious or suspicious URLs based on domain characteristics, patterns, and ML models.
+## 🚀 Features
 
-✅ **QR Code Analysis** - Extracts and scans URLs from QR codes for potential fraud.
+- 🔗 Analyze URLs for phishing and malicious behavior
+- 📱 Scan QR codes and analyze embedded URLs
+- 🤖 Machine Learning based fraud detection
+- 🌍 Domain Intelligence (WHOIS lookup)
+- 📅 Domain age detection
+- 🏢 Registrar information
+- 🛡️ Security Score (0–100)
+- ⚠️ Risk Level Classification (Safe, Low, Medium, High, Critical)
+- 🔒 HTTPS security verification
+- 🌐 IP Address resolution
+- 🚩 Suspicious URL indicator detection
+- ✅ Trusted domain whitelist
+- 📊 Confidence score for every prediction
+- 📜 Analysis history using SQLite database
+- 💬 User feedback collection for future model improvement
 
-✅ **Risk Level & Confidence Score** - Displays fraud probability with a risk level (Low/Medium/High).
+---
 
-✅ **History Tracking** - Saves previously analyzed URLs and QR codes for reference.
+# 🛠️ Tech Stack
 
-✅ **Real-Time Detection** - Provides instant feedback on URLs & QR codes.
+| Category | Technologies |
+|----------|--------------|
+| Frontend | Streamlit |
+| Backend | Python |
+| Machine Learning | Scikit-learn (Random Forest) |
+| Data Processing | Pandas, NumPy |
+| QR Processing | OpenCV, pyzbar, Pillow |
+| Database | SQLite |
+| Domain Intelligence | python-whois |
+| URL Parsing | urllib, socket |
+| Environment | uv |
 
-✅ **Cross-Origin Support (CORS)** - Allows frontend (JavaScript) to communicate with backend (Flask).
+---
 
-## 🛠️ Tech Stack
+# 🧠 Machine Learning Model
 
-- **Frontend**: HTML, CSS, JavaScript
-- **Backend**: Python (Flask)
-- **Machine Learning**: Scikit-learn, Pandas, NumPy
-- **QR Code Processing**: OpenCV, pyzbar, Pillow
-- **CORS Handling**: Flask-CORS
+The application uses a **Random Forest Classifier** trained on URL-based features including:
 
-## 📊 Fraud Detection Metrics Comparison
+- URL Length
+- Domain Length
+- Path Length
+- HTTPS Usage
+- HTTP Usage
+- IP Address Detection
+- Suspicious Keywords
+- Number of Digits
+- Number of Slashes
+- Query Parameters
+- Entropy
+- Suspicious Top-Level Domains
+- Domain Age
+- Young Domain Detection
+- Additional heuristic security features
 
-### **Previous Metrics:**
+The extracted features are normalized using **StandardScaler** before prediction.
+
+---
+
+# 📊 Detection Output
+
+For every analyzed URL the system provides:
+
+- Fraudulent / Safe prediction
+- Confidence score
+- Risk Level
+- Security Score
+- Domain Information
+- Registrar
+- Domain Age
+- HTTPS Status
+- IP Address
+- Suspicious Indicators
+- Explanation of the prediction
+
+---
+
+# 📂 Project Structure
 
 ```
-              precision    recall  f1-score   support
-
-           0       0.87      0.83      0.85       172
-           1       0.79      0.84      0.81       128
-
-    accuracy                           0.83       300
-   macro avg       0.83      0.83      0.83       300
-weighted avg       0.84      0.83      0.83       300
+Unified-QR-and-URL-Phishing-Detection
+│
+├── streamlit_app.py
+├── Notebook/
+│   ├── fraud_detection_model_.py
+│   └── trained_models/
+├── helpers/
+├── database/
+├── images/
+├── README.md
+├── pyproject.toml
+└── uv.lock
 ```
 
-### **Updated Metrics:**
+---
 
-```
-              precision    recall  f1-score   support
+# ⚙️ Installation
 
-           0       0.85      0.90      0.88       162
-           1       0.88      0.82      0.85       138
+Clone the repository
 
-    accuracy                           0.86       300
-   macro avg       0.86      0.86      0.86       300
-weighted avg       0.86      0.86      0.86       300
+```bash
+git clone https://github.com/Blessy-K/Unified-QR-and-URL-Phishing-Detection.git
 ```
 
-## 🏗️ Project Setup
+Move into the project
 
-### Clone the Repository
-```sh
-git clone https://github.com/yourusername/fraud-detection.git
-cd fraud-detection
+```bash
+cd Unified-QR-and-URL-Phishing-Detection
 ```
 
-### Install Dependencies
-```sh
-pip install -r requirements.txt
+Install dependencies
+
+```bash
+uv sync
 ```
 
-### ⚠️ **Important Prerequisite (for Windows Users)**
+Run the application
 
-To avoid DLL-related errors (e.g., when using `pyzbar` or `OpenCV`), please install the Microsoft Visual C++ Redistributable packages from 2008 to 2015.
-
-🔗 **Download Links:**
-
-* **Visual C++ 2008 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-us/download/details.aspx?id=26368)
-
-* **Visual C++ 2010 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-us/download/details.aspx?id=26999)
-
-* **Visual C++ 2012 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-in/download/details.aspx?id=30679)
-
-* **Visual C++ 2013 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-in/download/details.aspx?id=40784)
-
-* **Visual C++ 2015-2022 Redistributable (x64):** [Download](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-
-* **Visual C++ 2015-2022 Redistributable (x86):** [Download](https://aka.ms/vs/17/release/vc_redist.x86.exe)
-
-
-Make sure to install **both x86 and x64 versions** if you are running a 64-bit operating system.
-
-### Run the Flask Server
-```sh
-python app.py
-```
-*(Runs on http://127.0.0.1:5000/ by default)*
-
-### Start the Frontend
-Open `index.html` in a browser or use Live Server (VS Code).
-
-## 📌 API Endpoints
-
-### 1️⃣ Analyze URL
-
-**Endpoint:** `POST /analyze-url`
-
-#### **Request:**
-```json
-{
-  "url": "https://example.com"
-}
+```bash
+uv run streamlit run streamlit_app.py
 ```
 
-#### **Response:**
-```json
-{
-  "is_fraud": true,
-  "confidence": 85.6,
-  "risk_level": "High",
-  "risk_factors": ["Suspicious domain", "Contains unusual characters"]
-}
-```
+---
 
-### 2️⃣ Analyze QR Code
+# 📸 Screenshot
 
-**Endpoint:** `POST /analyze-qr`
+![Application Screenshot](images/image.png)
 
-#### **Request:**
-Upload an image containing a QR code
+---
 
-#### **Response:**
-```json
-{
-  "is_fraud": false,
-  "confidence": 32.4,
-  "risk_level": "Low"
-}
-```
-## Screenshhot
+# 🎯 Future Enhancements
 
-![alt text](images/image.png)
+- Deep Learning based phishing detection
+- Real-time blacklist integration
+- Browser extension
+- Email phishing detection
+- Android application
+- Continuous model retraining using user feedback
 
-## 👨‍💻 Contributors
-Blessy
+---
 
+# 👩‍💻 Author
+
+**Blessy K**
+
+B.Tech – Computer Science & Engineering (Data Science)
+
+---
+
+# ⭐ If you like this project
+
+Give this repository a ⭐ on GitHub.
